@@ -1,39 +1,105 @@
-name: Build APK
+name: Real Web to APK Builder
 
 on:
   repository_dispatch:
     types: [build-apk, build_apk]
 
+# গিটহাব রিলিজ তৈরি করার জন্য পারমিশন
+permissions:
+  contents: write 
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Receive Data
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: ☕ Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '11'
+
+      - name: 📦 Install Cordova & JSON Parser
         run: |
-          echo "App URL: ${{ github.event.client_payload.appUrl }}"
-          echo "Doc ID: ${{ github.event.client_payload.docId }}"
-          
-      - name: Build APK (Simulation)
+          npm install -g cordova
+          sudo apt-get install jq -y
+
+      - name: 📥 Parse Website Data & Firebase Config
+        id: parse
         run: |
-          echo "Simulating APK Generation..."
-          sleep 15
+          echo "APP_URL=${{ github.event.client_payload.appUrl }}" >> $GITHUB_ENV
+          echo "APP_NAME=${{ github.event.client_payload.appName }}" >> $GITHUB_ENV
+          echo "DOC_ID=${{ github.event.client_payload.docId }}" >> $GITHUB_ENV
           
-      - name: Update Firebase Database
+          # ফ্রন্টএন্ড থেকে পাঠানো ফায়ারবেস কনফিগ ডিকোড করা
+          echo '${{ github.event.client_payload.firebaseConfig }}' > fb.json
+          echo "FB_PROJECT=$(jq -r '.projectId' fb.json)" >> $GITHUB_ENV
+          echo "FB_API_KEY=$(jq -r '.apiKey' fb.json)" >> $GITHUB_ENV
+
+      - name: 🛠️ Create Android App Environment
         run: |
-          PROJECT_ID="my-app-ae88f"
-          DOC_ID="${{ github.event.client_payload.docId }}"
-          API_KEY="AIzaSyAo9ddKYbaCiIz5iwCNJN0pxs3UQvBvrTI"
+          # কর্ডোভা প্রোজেক্ট তৈরি
+          cordova create myapp com.webtoapk.${{ env.DOC_ID }} "${{ env.APP_NAME }}"
+          cd myapp
+          cordova platform add android@11.0.0
+
+          # আইকন ডাউনলোড ও সেটআপ
+          mkdir -p res
+          curl -sL "${{ github.event.client_payload.appIcon }}" -o res/icon.png || true
+          sed -i 's|</widget>|    <allow-navigation href="*" />\n    <icon src="res/icon.png" />\n</widget>|' config.xml
+
+          # ওয়েবসাইট লোড করার জন্য WebView তৈরি
+          rm -rf www/*
+          cat <<EOF > www/index.html
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+              <title>${{ env.APP_NAME }}</title>
+          </head>
+          <body style="background-color: #ffffff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0;">
+              <div style="font-family: sans-serif; color: #475569; font-weight: bold;">Loading App...</div>
+              <script>
+                  setTimeout(function() {
+                      window.location.replace("${{ env.APP_URL }}");
+                  }, 800);
+              </script>
+          </body>
+          </html>
+          EOF
+
+      - name: 🚀 Compile APK (Gradle Build)
+        run: |
+          cd myapp
+          cordova build android
+          # বিল্ড হওয়া APK ফাইলটি মেইন ডিরেক্টরিতে নিয়ে আসা
+          cp platforms/android/app/build/outputs/apk/debug/app-debug.apk ../${{ env.DOC_ID }}.apk
+
+      - name: ☁️ Upload APK to GitHub Releases
+        id: upload_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: apk-${{ env.DOC_ID }}
+          name: ${{ env.APP_NAME }} (Build)
+          files: ./${{ env.DOC_ID }}.apk
+          body: "Automated APK generated for ${{ env.APP_NAME }}"
+
+      - name: 🔄 Update Firebase with Direct Download Link
+        run: |
+          # গিটহাব রিলিজের ডিরেক্ট ডাউনলোড লিংক
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/apk-${{ env.DOC_ID }}/${{ env.DOC_ID }}.apk"
           
-          if [ -z "$DOC_ID" ] || [ "$DOC_ID" == "null" ]; then
-            echo "Error: DOC_ID is empty! App failed to send data."
-            exit 1
-          fi
-          
-          curl -X PATCH "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/apk_builds/$DOC_ID?key=$API_KEY&updateMask.fieldPaths=status&updateMask.fieldPaths=downloadUrl" \
+          # ফায়ারবেস ফায়ারস্টোর আপডেট
+          curl -X PATCH "https://firestore.googleapis.com/v1/projects/${{ env.FB_PROJECT }}/databases/(default)/documents/apk_builds/${{ env.DOC_ID }}?key=${{ env.FB_API_KEY }}&updateMask.fieldPaths=status&updateMask.fieldPaths=downloadUrl" \
           -H "Content-Type: application/json" \
-          -d '{
-            "fields": {
-              "status": { "stringValue": "completed" },
-              "downloadUrl": { "stringValue": "https://example.com/download/app.apk" }
+          -d "{
+            \"fields\": {
+              \"status\": { \"stringValue\": \"completed\" },
+              \"downloadUrl\": { \"stringValue\": \"$DOWNLOAD_URL\" }
             }
-          }'
+          }"
