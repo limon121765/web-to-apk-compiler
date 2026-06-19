@@ -2,7 +2,7 @@ name: Build APK
 
 on:
   repository_dispatch:
-    types: [build-apk]
+    types: [build_apk]
 
 jobs:
   build:
@@ -10,24 +10,25 @@ jobs:
     steps:
       - name: Receive Data
         run: |
-          echo "Building APK for URL: ${{ github.event.client_payload.appUrl }}"
+          echo "App URL: ${{ github.event.client_payload.url }}"
+          echo "Doc ID: ${{ github.event.client_payload.docId }}"
           
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-
-      - name: Install Bubblewrap (Web to APK Tool)
-        run: npm install -g @google/bubblewrap
-
-      # এখানে Bubblewrap বা Capacitor কমান্ড ব্যবহার করে APK কম্পাইল করার স্ক্রিপ্ট রান হবে
-      # (উদাহরণের জন্য একটি ডামি APK তৈরি করে সেটি ফায়ারবেসে লিংক আপডেট করার কমান্ড দেখানো হলো)
-      
-      - name: Mock APK Generation & Firestore Update
+      - name: Build APK (Simulation)
         run: |
           echo "Simulating APK Generation..."
-          sleep 10 # কম্পাইল হতে যে সময় লাগে
-          DOWNLOAD_URL="https://example.com/download/app.apk"
+          sleep 15
           
-          # Firestore-এ স্ট্যাটাস এবং ডাউনলোড লিংক আপডেট করার পাইথন বা নোড স্ক্রিপ্ট
-          # (যাতে আপনার HTML ফাইলটি সাথে সাথে ডাউনলোড বাটন শো করে)
+      - name: Update Firebase Database
+        run: |
+          PROJECT_ID="my-app-ae88f"
+          DOC_ID="${{ github.event.client_payload.docId }}"
+          API_KEY="AIzaSyAo9ddKYbaCiIz5iwCNJN0pxs3UQvBvrTI"
+          
+          curl -X PATCH "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/apks/$DOC_ID?key=$API_KEY&updateMask.fieldPaths=status&updateMask.fieldPaths=downloadUrl" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "fields": {
+              "status": { "stringValue": "success" },
+              "downloadUrl": { "stringValue": "https://example.com/download/app.apk" }
+            }
+          }'
