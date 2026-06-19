@@ -10,7 +10,7 @@ jobs:
     steps:
       - name: Receive Data
         run: |
-          echo "App URL: ${{ github.event.client_payload.url }}"
+          echo "App URL: ${{ github.event.client_payload.appUrl }}"
           echo "Doc ID: ${{ github.event.client_payload.docId }}"
           
       - name: Build APK (Simulation)
@@ -29,11 +29,11 @@ jobs:
             exit 1
           fi
           
-          curl -X PATCH "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/apks/$DOC_ID?key=$API_KEY&updateMask.fieldPaths=status&updateMask.fieldPaths=downloadUrl" \
+          curl -X PATCH "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/apk_builds/$DOC_ID?key=$API_KEY&updateMask.fieldPaths=status&updateMask.fieldPaths=downloadUrl" \
           -H "Content-Type: application/json" \
           -d '{
             "fields": {
-              "status": { "stringValue": "success" },
+              "status": { "stringValue": "completed" },
               "downloadUrl": { "stringValue": "https://example.com/download/app.apk" }
             }
           }'
