@@ -2,105 +2,90 @@ name: Real Web to APK Builder
 
 on:
   repository_dispatch:
-    types: [build-apk]
+    types: [build-apk, build_apk]
 
 permissions:
-  contents: write
+  contents: write 
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v3
         with:
-          node-version: '20'
+          node-version: '18'
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - name: ☕ Setup Java
+        uses: actions/setup-java@v3
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Install Cordova
+      - name: 📦 Install Cordova
         run: npm install -g cordova
 
-      - name: Create and Build Cordova App
+      - name: 🛠️ Create Android App Environment
         run: |
-          URL="${{ github.event.client_payload.appUrl }}"
+          URL="${{ github.event.client_payload.url }}"
           APP_NAME="${{ github.event.client_payload.appName }}"
           ICON_URL="${{ github.event.client_payload.appIcon }}"
-          DOC_ID="${{ github.event.client_payload.docId }}"
-
-          # Create Cordova Project
-          cordova create myapp com.web2apk.app "$APP_NAME"
+          
+          if [ -z "$URL" ]; then URL="https://google.com"; fi
+          if [ -z "$APP_NAME" ]; then APP_NAME="MyWebApp"; fi
+          
+          # Cordova প্রোজেক্ট ইনিশিয়ালাইজেশন
+          cordova create myapp com.limon.webtoapk "$APP_NAME"
           cd myapp
           cordova platform add android
+          
+          # আইকন ফোল্ডার তৈরি ও ডাউনলোড
+          mkdir -p res
+          curl -sL "$ICON_URL" -o res/icon.png || true
+          
+          # Native WebView Setup (আইফ্রেম এরর দূর করার জন্য সরাসরি সোর্স রিমোট করা হল)
+          sed -i 's|<content src="index.html" />|<content src="'"$URL"'" />|' config.xml
+          
+          # প্রয়োজনীয় পারমিশন ও আইকন ট্যাগ ইনজেক্ট করা
+          sed -i 's|</widget>|    <allow-navigation href="*" />\n    <icon src="res/icon.png" />\n</widget>|' config.xml
 
-          # Icon Setup (Better Approach)
-          mkdir -p res/icon/android
-          if [ -n "$ICON_URL" ]; then
-            curl -sL "$ICON_URL" -o res/icon.png || echo "Icon download failed"
-            cp res/icon.png res/icon/android/icon.png
-          fi
+      - name: 🚀 Compile APK (Gradle Build)
+        run: |
+          cd myapp
+          cordova build android
+          cp platforms/android/app/build/outputs/apk/debug/app-debug.apk ../${{ github.event.client_payload.docId }}.apk
 
-          # Update config.xml properly
-          cat >> config.xml << EOF
-            <icon src="res/icon.png" />
-          EOF
-
-          # WebView Setup with better iframe
-          rm -rf www/*
-          cat > www/index.html << 'EOF'
-          <!DOCTYPE html>
-          <html>
-          <head>
-              <meta charset="utf-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-              <title>${APP_NAME}</title>
-              <style>
-                  body, html { margin:0; padding:0; height:100%; overflow:hidden; background:#000; }
-                  iframe { width:100%; height:100%; border:none; }
-              </style>
-          </head>
-          <body>
-              <iframe src="${URL}" allowfullscreen></iframe>
-          </body>
-          </html>
-          EOF
-
-          # Build APK
-          cordova build android --debug -- --packageType=apk
-
-          # Copy APK
-          cp platforms/android/app/build/outputs/apk/debug/app-debug.apk ../${DOC_ID}.apk
-
-      - name: Upload APK to GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: ☁️ Upload APK to GitHub Releases
+        id: upload_release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: apk-${{ github.event.client_payload.docId }}
-          name: APK Build - ${{ github.event.client_payload.appName }}
+          name: APK Build ${{ github.event.client_payload.docId }}
           files: ./${{ github.event.client_payload.docId }}.apk
-          draft: false
-          prerelease: false
 
-      - name: Update Firebase Firestore
+      - name: 🔄 Update Firebase Data
+        if: always()
         run: |
           DOC_ID="${{ github.event.client_payload.docId }}"
-          DOWNLOAD_URL="https://github.com/limon121765/web-to-apk-compiler/releases/download/apk-$DOC_ID/$DOC_ID.apk"
-
-          curl -X PATCH \
-            "https://firestore.googleapis.com/v1/projects/my-app-ae88f/databases/(default)/documents/apk_builds/$DOC_ID?key=AIzaSyAo9ddKYbaCiIz5iwCNJN0pxs3UQvBvrTI&updateMask.fieldPaths=status&updateMask.fieldPaths=downloadUrl" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"fields\": {
-                \"status\": {\"stringValue\": \"completed\"},
-                \"downloadUrl\": {\"stringValue\": \"$DOWNLOAD_URL\"}
-              }
-            }"
-        env:
-          FIREBASE_API_KEY: "AIzaSyAo9ddKYbaCiIz5iwCNJN0pxs3UQvBvrTI"
+          PROJECT_ID="my-app-ae88f"
+          API_KEY="AIzaSyAo9ddKYbaCiIz5iwCNJN0pxs3UQvBvrTI"
+          
+          # যদি রিলিজ সফল হয় তবে status='completed' অন্যথায় 'failed' হবে
+          if [ "${{ job.status }}" = "success" ]; then
+            STATUS="completed"
+            DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/apk-$DOC_ID/$DOC_ID.apk"
+          else
+            STATUS="failed"
+            DOWNLOAD_URL=""
+          fi
+          
+          curl -X PATCH "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/apk_builds/$DOC_ID?key=$API_KEY&updateMask.fieldPaths=status&updateMask.fieldPaths=downloadUrl" \
+          -H "Content-Type: application/json" \
+          -d "{
+            \"fields\": {
+              \"status\": { \"stringValue\": \"$STATUS\" },
+              \"downloadUrl\": { \"stringValue\": \"$DOWNLOAD_URL\" }
+            }
+          }"
