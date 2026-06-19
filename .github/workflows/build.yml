@@ -2,7 +2,7 @@ name: Build APK
 
 on:
   repository_dispatch:
-    types: [build_apk]
+    types: [build-apk, build_apk]
 
 jobs:
   build:
@@ -23,6 +23,11 @@ jobs:
           PROJECT_ID="my-app-ae88f"
           DOC_ID="${{ github.event.client_payload.docId }}"
           API_KEY="AIzaSyAo9ddKYbaCiIz5iwCNJN0pxs3UQvBvrTI"
+          
+          if [ -z "$DOC_ID" ] || [ "$DOC_ID" == "null" ]; then
+            echo "Error: DOC_ID is empty! App failed to send data."
+            exit 1
+          fi
           
           curl -X PATCH "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/apks/$DOC_ID?key=$API_KEY&updateMask.fieldPaths=status&updateMask.fieldPaths=downloadUrl" \
           -H "Content-Type: application/json" \
