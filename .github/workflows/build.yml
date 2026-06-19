@@ -25,7 +25,7 @@ jobs:
       - name: 📦 Install Cordova
         run: npm install -g cordova
 
-      - name: 🛠️ Create Android App Environment
+      - name: 🛠️ Create Android App Environment & Fix Downloads
         run: |
           URL="${{ github.event.client_payload.url }}"
           APP_NAME="${{ github.event.client_payload.appName }}"
@@ -39,15 +39,18 @@ jobs:
           cd myapp
           cordova platform add android
           
-          # আইকন ফোল্ডার তৈরি ও ডাউনলোড
+          # আইকন ও স্প্ল্যাশ স্ক্রিন সেটআপ
           mkdir -p res www/img
           curl -sL "$ICON_URL" -o res/icon.png || true
           cp res/icon.png www/img/icon.png || true
           
-          # ডিফল্ট কর্ডোভা বোরিং স্প্ল্যাশ স্ক্রিন সম্পূর্ণ বন্ধ করা
-          sed -i 's|</widget>|    <preference name="SplashScreenDelay" value="0" />\n    <allow-navigation href="*" />\n    <icon src="res/icon.png" />\n</widget>|' config.xml
+          # অ্যান্ড্রয়েড ম্যানিফেস্ট এর জন্য XML Namespace যুক্ত করা
+          sed -i 's/xmlns="http:\/\/www.w3.org\/ns\/widgets"/xmlns="http:\/\/www.w3.org\/ns\/widgets" xmlns:android="http:\/\/schemas.android.com\/apk\/res\/android"/g' config.xml
+          
+          # ফাইল ডাউনলোড পারমিশন এবং স্প্ল্যাশ স্ক্রিন কনফিগারেশন যুক্ত করা
+          sed -i 's|</widget>|    <config-file target="AndroidManifest.xml" parent="/*">\n        <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\n        <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n    </config-file>\n    <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n        <application android:requestLegacyExternalStorage="true" />\n    </edit-config>\n    <preference name="SplashScreenDelay" value="0" />\n    <allow-navigation href="*" />\n    <icon src="res/icon.png" />\n</widget>|' config.xml
 
-          # কাস্টম অ্যানিমেটেড স্প্ল্যাশ স্ক্রিন তৈরি (HTML + CSS Pulse Animation)
+          # কাস্টম অ্যানিমেটেড স্প্ল্যাশ স্ক্রিন (আগের মতই)
           cat <<EOF > www/index.html
           <!DOCTYPE html>
           <html lang="en">
@@ -56,62 +59,131 @@ jobs:
               <meta name="viewport" content="width=device-width, initial-scale=1.0">
               <title>$APP_NAME</title>
               <style>
-                  body {
-                      margin: 0; padding: 0;
-                      display: flex; flex-direction: column;
-                      justify-content: center; align-items: center;
-                      height: 100vh; background-color: #f8fafc;
-                      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                  }
-                  .logo-container {
-                      animation: pulse 2s infinite;
-                  }
-                  img {
-                      width: 130px; height: 130px;
-                      border-radius: 25%;
-                      box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-                      object-fit: cover;
-                  }
-                  .loader {
-                      border: 4px solid #e2e8f0;
-                      border-top: 4px solid #0066FF;
-                      border-radius: 50%;
-                      width: 36px; height: 36px;
-                      animation: spin 1s linear infinite;
-                      margin-top: 30px;
-                  }
-                  h2 {
-                      color: #1e293b; margin-top: 25px; font-weight: 700;
-                      letter-spacing: 0.5px; font-size: 22px;
-                  }
-                  @keyframes pulse {
-                      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 102, 255, 0.4); }
-                      70% { transform: scale(1.05); box-shadow: 0 0 0 20px rgba(0, 102, 255, 0); }
-                      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 102, 255, 0); }
-                  }
-                  @keyframes spin {
-                      0% { transform: rotate(0deg); }
-                      100% { transform: rotate(360deg); }
-                  }
+                  body { margin: 0; padding: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; background-color: #f8fafc; font-family: 'Segoe UI', Tahoma, sans-serif; }
+                  .logo-container { animation: pulse 2s infinite; }
+                  img { width: 130px; height: 130px; border-radius: 25%; box-shadow: 0 10px 25px rgba(0,0,0,0.1); object-fit: cover; }
+                  .loader { border: 4px solid #e2e8f0; border-top: 4px solid #0066FF; border-radius: 50%; width: 36px; height: 36px; animation: spin 1s linear infinite; margin-top: 30px; }
+                  h2 { color: #1e293b; margin-top: 25px; font-weight: 700; font-size: 22px; }
+                  @keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 102, 255, 0.4); } 70% { transform: scale(1.05); box-shadow: 0 0 0 20px rgba(0, 102, 255, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 102, 255, 0); } }
+                  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
               </style>
           </head>
           <body>
-              <div class="logo-container">
-                  <img src="img/icon.png" alt="App Logo">
-              </div>
-              
-              <h2>$APP_NAME</h2>
-              <div class="loader"></div>
-              
-              <script>
-                  // ৩ সেকেন্ড অ্যানিমেশন চলার পর মেইন ওয়েবসাইটে রিডাইরেক্ট হবে
-                  setTimeout(() => {
-                      window.location.replace("$URL");
-                  }, 3000);
-              </script>
+              <div class="logo-container"><img src="img/icon.png" alt="App Logo"></div>
+              <h2>$APP_NAME</h2><div class="loader"></div>
+              <script>setTimeout(() => { window.location.replace("$URL"); }, 3000);</script>
           </body>
           </html>
           EOF
+
+          # ------------------------------------------------------------
+          # NATIVE DOWNLOAD FIX: MainActivity.java ওভাররাইট করে লিসেনার যুক্ত করা
+          # ------------------------------------------------------------
+          MAIN_ACTIVITY_PATH="platforms/android/app/src/main/java/com/limon/webtoapk/MainActivity.java"
+          
+          cat << 'JAVAEOF' > $MAIN_ACTIVITY_PATH
+          package com.limon.webtoapk;
+
+          import android.os.Bundle;
+          import org.apache.cordova.*;
+          import android.webkit.DownloadListener;
+          import android.app.DownloadManager;
+          import android.net.Uri;
+          import android.os.Environment;
+          import android.widget.Toast;
+          import android.webkit.CookieManager;
+          import org.apache.cordova.engine.SystemWebView;
+          import android.util.Base64;
+          import java.io.File;
+          import java.io.FileOutputStream;
+          import android.webkit.JavascriptInterface;
+
+          public class MainActivity extends CordovaActivity {
+              @Override
+              public void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  Bundle extras = getIntent().getExtras();
+                  if (extras != null && extras.getBoolean("cdvStartInBackground", false)) {
+                      moveTaskToBack(true);
+                  }
+                  loadUrl(launchUrl);
+
+                  SystemWebView webView = (SystemWebView) appView.getView();
+                  
+                  // Blob/Base64 ডেটা ক্যাপচার করার জন্য জাভাস্ক্রিপ্ট ব্রিজ
+                  webView.addJavascriptInterface(new Object() {
+                      @JavascriptInterface
+                      public void getBase64FromBlobData(String base64Data) {
+                          try {
+                              String[] urlParts = base64Data.split(",");
+                              String base64File = urlParts[1];
+                              byte[] fileBytes = Base64.decode(base64File, 0);
+                              
+                              String extension = ".pdf"; // Default
+                              if (urlParts[0].contains("image/png")) extension = ".png";
+                              else if (urlParts[0].contains("image/jpeg")) extension = ".jpg";
+                              
+                              File filePath = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Document_" + System.currentTimeMillis() + extension);
+                              FileOutputStream os = new FileOutputStream(filePath, false);
+                              os.write(fileBytes);
+                              os.flush();
+                              os.close();
+                              
+                              runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ডাউনলোড সম্পন্ন হয়েছে! (Downloads ফোল্ডার চেক করুন)", Toast.LENGTH_LONG).show());
+                          } catch (Exception e) {
+                              runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ডাউনলোড ফেইল হয়েছে!", Toast.LENGTH_SHORT).show());
+                          }
+                      }
+                  }, "AndroidDownloader");
+
+                  // সমস্ত ডাউনলোড রিকোয়েস্ট ম্যানেজ করা
+                  webView.setDownloadListener(new DownloadListener() {
+                      public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
+                          if (url.startsWith("blob:")) {
+                              String js = "javascript: " +
+                                  "var xhr = new XMLHttpRequest();" +
+                                  "xhr.open('GET', '" + url + "', true);" +
+                                  "xhr.responseType = 'blob';" +
+                                  "xhr.onload = function(e) {" +
+                                  "    if (this.status == 200) {" +
+                                  "        var blob = this.response;" +
+                                  "        var reader = new FileReader();" +
+                                  "        reader.readAsDataURL(blob);" +
+                                  "        reader.onloadend = function() {" +
+                                  "            AndroidDownloader.getBase64FromBlobData(reader.result);" +
+                                  "        }" +
+                                  "    }" +
+                                  "};" +
+                                  "xhr.send();";
+                              webView.evaluateJavascript(js, null);
+                              Toast.makeText(getApplicationContext(), "ফাইল প্রস্তুত হচ্ছে...", Toast.LENGTH_SHORT).show();
+                          } else if (url.startsWith("data:")) {
+                              webView.evaluateJavascript("javascript:AndroidDownloader.getBase64FromBlobData('" + url + "');", null);
+                              Toast.makeText(getApplicationContext(), "ফাইল সেভ হচ্ছে...", Toast.LENGTH_SHORT).show();
+                          } else {
+                              DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+                              request.allowScanningByMediaScanner();
+                              request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                              
+                              String fileName = "Download_" + System.currentTimeMillis();
+                              if (mimetype != null) {
+                                  if (mimetype.contains("pdf")) fileName += ".pdf";
+                                  else if (mimetype.contains("png")) fileName += ".png";
+                                  else if (mimetype.contains("jpeg")) fileName += ".jpg";
+                              }
+                              
+                              request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
+                              String cookie = CookieManager.getInstance().getCookie(url);
+                              request.addRequestHeader("Cookie", cookie);
+                              DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                              dm.enqueue(request);
+                              Toast.makeText(getApplicationContext(), "ডাউনলোড শুরু হয়েছে...", Toast.LENGTH_LONG).show();
+                          }
+                      }
+                  });
+              }
+          }
+          JAVAEOF
 
       - name: 🚀 Compile APK (Gradle Build)
         run: |
