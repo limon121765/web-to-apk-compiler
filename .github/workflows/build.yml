@@ -40,14 +40,78 @@ jobs:
           cordova platform add android
           
           # আইকন ফোল্ডার তৈরি ও ডাউনলোড
-          mkdir -p res
+          mkdir -p res www/img
           curl -sL "$ICON_URL" -o res/icon.png || true
+          cp res/icon.png www/img/icon.png || true
           
-          # Native WebView Setup (আইফ্রেম এরর দূর করার জন্য সরাসরি সোর্স রিমোট করা হল)
-          sed -i 's|<content src="index.html" />|<content src="'"$URL"'" />|' config.xml
-          
-          # প্রয়োজনীয় পারমিশন ও আইকন ট্যাগ ইনজেক্ট করা
-          sed -i 's|</widget>|    <allow-navigation href="*" />\n    <icon src="res/icon.png" />\n</widget>|' config.xml
+          # ডিফল্ট কর্ডোভা বোরিং স্প্ল্যাশ স্ক্রিন সম্পূর্ণ বন্ধ করা
+          sed -i 's|</widget>|    <preference name="SplashScreenDelay" value="0" />\n    <allow-navigation href="*" />\n    <icon src="res/icon.png" />\n</widget>|' config.xml
+
+          # কাস্টম অ্যানিমেটেড স্প্ল্যাশ স্ক্রিন তৈরি (HTML + CSS Pulse Animation)
+          cat <<EOF > www/index.html
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>$APP_NAME</title>
+              <style>
+                  body {
+                      margin: 0; padding: 0;
+                      display: flex; flex-direction: column;
+                      justify-content: center; align-items: center;
+                      height: 100vh; background-color: #f8fafc;
+                      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                  }
+                  .logo-container {
+                      animation: pulse 2s infinite;
+                  }
+                  img {
+                      width: 130px; height: 130px;
+                      border-radius: 25%;
+                      box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+                      object-fit: cover;
+                  }
+                  .loader {
+                      border: 4px solid #e2e8f0;
+                      border-top: 4px solid #0066FF;
+                      border-radius: 50%;
+                      width: 36px; height: 36px;
+                      animation: spin 1s linear infinite;
+                      margin-top: 30px;
+                  }
+                  h2 {
+                      color: #1e293b; margin-top: 25px; font-weight: 700;
+                      letter-spacing: 0.5px; font-size: 22px;
+                  }
+                  @keyframes pulse {
+                      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 102, 255, 0.4); }
+                      70% { transform: scale(1.05); box-shadow: 0 0 0 20px rgba(0, 102, 255, 0); }
+                      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 102, 255, 0); }
+                  }
+                  @keyframes spin {
+                      0% { transform: rotate(0deg); }
+                      100% { transform: rotate(360deg); }
+                  }
+              </style>
+          </head>
+          <body>
+              <div class="logo-container">
+                  <img src="img/icon.png" alt="App Logo">
+              </div>
+              
+              <h2>$APP_NAME</h2>
+              <div class="loader"></div>
+              
+              <script>
+                  // ৩ সেকেন্ড অ্যানিমেশন চলার পর মেইন ওয়েবসাইটে রিডাইরেক্ট হবে
+                  setTimeout(() => {
+                      window.location.replace("$URL");
+                  }, 3000);
+              </script>
+          </body>
+          </html>
+          EOF
 
       - name: 🚀 Compile APK (Gradle Build)
         run: |
@@ -72,7 +136,6 @@ jobs:
           PROJECT_ID="my-app-ae88f"
           API_KEY="AIzaSyAo9ddKYbaCiIz5iwCNJN0pxs3UQvBvrTI"
           
-          # যদি রিলিজ সফল হয় তবে status='completed' অন্যথায় 'failed' হবে
           if [ "${{ job.status }}" = "success" ]; then
             STATUS="completed"
             DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/apk-$DOC_ID/$DOC_ID.apk"
