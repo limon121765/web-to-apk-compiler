@@ -24,7 +24,7 @@ jobs:
 
       - name: 📦 Install Cordova
         run: npm install -g cordova
-       - name: 🛠️ Create Android App Environment
+      - name: 🛠️ Create Android App Environment
         run: |
           # ওয়েবসাইট এবং অ্যাপ ডাটা নেওয়া
           URL="${{ github.event.client_payload.url }}"
