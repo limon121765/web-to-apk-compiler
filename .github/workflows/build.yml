@@ -77,10 +77,10 @@ jobs:
           EOF
 
           MAIN_ACTIVITY_PATH="platforms/android/app/src/main/java/$PKG_PATH/MainActivity.java"
-          mkdir -p platforms/android/app/src/main/java/$PKG_PATH
           
-          cat << 'JAVAEOF' > platforms/android/app/src/main/java/com/limon/webtoapk/MainActivity.java
-          package com.limon.webtoapk;
+          # நேரடியாக ফাইলটি ওভাররাইট করা হচ্ছে (কোনো মুভ বা ডিলিট কমান্ড ছাড়া)
+          cat << 'JAVAEOF' > "$MAIN_ACTIVITY_PATH"
+          package PLACEHOLDER_PACKAGE;
 
           import android.os.Bundle;
           import org.apache.cordova.*;
@@ -183,12 +183,11 @@ jobs:
                                   "};" +
                                   "xhr.send();";
                               webView.evaluateJavascript(js, null);
-                              Toast.makeText(getApplicationContext(), "ডাউনলোড শুরু হচ্ছে...", Toast.LENGTH_SHORT).show();
+                              runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ডাউনলোড শুরু হচ্ছে...", Toast.LENGTH_SHORT).show());
                           } else if (url.startsWith("data:")) {
                               webView.evaluateJavascript("javascript:AndroidDownloader.getBase64FromBlobData('" + url + "');", null);
-                              Toast.makeText(getApplicationContext(), "ডাউনলোড শুরু হচ্ছে...", Toast.LENGTH_SHORT).show();
+                              runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ডাউনলোড শুরু হচ্ছে...", Toast.LENGTH_SHORT).show());
                           } else {
-                              // সমাধান: URLUtil.guessFileName ব্যবহার করে সঠিক নাম এবং এক্সটেনশন বের করা
                               String fileName = URLUtil.guessFileName(url, contentDisposition, mimetype);
                               
                               DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
@@ -198,12 +197,11 @@ jobs:
                               request.allowScanningByMediaScanner();
                               request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
                               
-                              // সঠিক ফাইলের নাম ডাইরেক্টরিতে সেভ করা
                               request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
                               
                               DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
                               dm.enqueue(request);
-                              Toast.makeText(getApplicationContext(), "ডাউনলোড শুরু হয়েছে...", Toast.LENGTH_LONG).show();
+                              runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ডাউনলোড শুরু হয়েছে...", Toast.LENGTH_LONG).show());
                           }
                       }
                   });
@@ -211,9 +209,8 @@ jobs:
           }
           JAVAEOF
           
-          mv platforms/android/app/src/main/java/com/limon/webtoapk/MainActivity.java $MAIN_ACTIVITY_PATH
-          rm -rf platforms/android/app/src/main/java/com/limon/webtoapk
-          sed -i "s/package com.limon.webtoapk;/package $PKG_NAME;/g" "$MAIN_ACTIVITY_PATH"
+          # ডায়নামিক প্যাকেজ নেম রিপ্লেস করা হচ্ছে
+          sed -i "s/package PLACEHOLDER_PACKAGE;/package $PKG_NAME;/g" "$MAIN_ACTIVITY_PATH"
 
       - name: 🚀 Compile APK (Gradle Build)
         run: |
