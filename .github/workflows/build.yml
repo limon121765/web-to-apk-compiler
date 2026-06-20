@@ -34,9 +34,12 @@ jobs:
           if [ -z "$URL" ]; then URL="https://google.com"; fi
           if [ -z "$APP_NAME" ]; then APP_NAME="MyWebApp"; fi
           
-          # ডায়নামিক প্যাকেজ নেম তৈরি (যাতে প্রতিটি অ্যাপ আলাদা হয়)
+          # ডায়নামিক প্যাকেজ নেইম তৈরি
           PKG_NAME="com.limon.app${GITHUB_RUN_ID}"
           PKG_PATH="com/limon/app${GITHUB_RUN_ID}"
+          
+          # প্যাকেজ নেইমটি পরবর্তী স্টেপে ব্যবহারের জন্য গিটহাব এনভায়রনমেন্টে সেভ করা হলো
+          echo "GENERATED_PKG_NAME=$PKG_NAME" >> $GITHUB_ENV
           
           # Cordova প্রোজেক্ট ইনিশিয়ালাইজেশন
           cordova create myapp $PKG_NAME "$APP_NAME"
@@ -182,7 +185,7 @@ jobs:
           }
           JAVAEOF
           
-          # Java ফাইলে প্যাকেজ নেম ডায়নামিক ভাবে পরিবর্তন করা
+          # Java ফাইলে প্যাকেজ নেম পরিবর্তন করা
           sed -i "s/com.limon.webtoapk/$PKG_NAME/g" "$MAIN_ACTIVITY_PATH"
 
       - name: 🚀 Compile APK (Gradle Build)
@@ -216,11 +219,13 @@ jobs:
             DOWNLOAD_URL=""
           fi
           
-          curl -X PATCH "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/apk_builds/$DOC_ID?key=$API_KEY&updateMask.fieldPaths=status&updateMask.fieldPaths=downloadUrl" \
+          # ফায়ারবেসে প্যাকেজ নেইম সহ ডেটা আপডেট করা হচ্ছে
+          curl -X PATCH "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/apk_builds/$DOC_ID?key=$API_KEY&updateMask.fieldPaths=status&updateMask.fieldPaths=downloadUrl&updateMask.fieldPaths=packageName" \
           -H "Content-Type: application/json" \
           -d "{
             \"fields\": {
               \"status\": { \"stringValue\": \"$STATUS\" },
-              \"downloadUrl\": { \"stringValue\": \"$DOWNLOAD_URL\" }
+              \"downloadUrl\": { \"stringValue\": \"$DOWNLOAD_URL\" },
+              \"packageName\": { \"stringValue\": \"$GENERATED_PKG_NAME\" }
             }
           }"
