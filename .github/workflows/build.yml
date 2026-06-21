@@ -1,4 +1,4 @@
-যাহাname: Real Web to APK Builder
+name: Real Web to APK Builder
 
 on:
   repository_dispatch:
@@ -11,21 +11,21 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: ⚙️ Setup Node.js
+      - name: тЪЩя╕П Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18'
 
-      - name: ☕ Setup Java
+      - name: тШХ Setup Java
         uses: actions/setup-java@v3
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: 📦 Install Cordova
+      - name: ЁЯУж Install Cordova
         run: npm install -g cordova
 
-      - name: 🛠️ Create App Environment & Optimize Speed
+      - name: ЁЯЫая╕П Create App Environment & Optimize Speed
         run: |
           URL="${{ github.event.client_payload.url }}"
           APP_NAME="${{ github.event.client_payload.appName }}"
@@ -64,6 +64,7 @@ jobs:
           <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
           <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
           <uses-permission android:name="android.permission.INTERNET" />
+          <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
           </config-file>
           <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">
           <application android:requestLegacyExternalStorage="true" android:hardwareAccelerated="true" />
@@ -72,13 +73,13 @@ jobs:
           </widget>
           EOF
         
-          # Start.io SDK ডিপেন্ডেন্সি যুক্ত করার জন্য build-extras.gradle তৈরি
+          # Start.io SDK v5.x ржбрж┐ржкрзЗржирзНржбрзЗржирзНрж╕рж┐ ржпрзБржХрзНржд ржХрж░рж╛рж░ ржЬржирзНржп build-extras.gradle рждрзИрж░рж┐
           cat <<EOF > platforms/android/app/build-extras.gradle
           repositories {
               maven { url "https://init.startappservice.com/jars" }
           }
           dependencies {
-              implementation 'com.startapp:inapp-sdk:4.11.0'
+              implementation 'com.startapp:inapp-sdk:5.+'
           }
           EOF
 
@@ -114,8 +115,13 @@ jobs:
               public void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
                   
-                  // Start.io Auto Initialization with your App ID
-                  StartAppSDK.init(this, "205114735", true);
+                  // Start.io SDK v5.x Initialization with your App ID
+                  StartAppSDK.initParams(this, "205114735")
+                      .setReturnAdsEnabled(true)
+                      .setCallback(() -> {
+                          // SDK ready, ads can now be requested
+                      })
+                      .init();
                   StartAppAd.disableSplash(); // Default Splash Screen Ad Disabled
                   
                   Bundle extras = getIntent().getExtras();
@@ -173,10 +179,10 @@ jobs:
                                   OutputStream out = getContentResolver().openOutputStream(uri);
                                   out.write(fileBytes);
                                   out.close();
-                                  runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ফাইল সেভ হয়েছে!", Toast.LENGTH_LONG).show());
+                                  runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ржлрж╛ржЗрж▓ рж╕рзЗржн рж╣ржпрж╝рзЗржЫрзЗ!", Toast.LENGTH_LONG).show());
                               }
                           } catch (Exception e) {
-                              runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ডাউনলোড এরর হচ্ছে!", Toast.LENGTH_SHORT).show());
+                              runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ржбрж╛ржЙржирж▓рзЛржб ржПрж░рж░ рж╣ржЪрзНржЫрзЗ!", Toast.LENGTH_SHORT).show());
                           }
                       }
                       
@@ -210,10 +216,10 @@ jobs:
                                   "};" +
                                   "xhr.send();";
                               webView.evaluateJavascript(js, null);
-                              runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ডাউনলোড শুরু হচ্ছে...", Toast.LENGTH_SHORT).show());
+                              runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ржбрж╛ржЙржирж▓рзЛржб рж╢рзБрж░рзБ рж╣ржЪрзНржЫрзЗ...", Toast.LENGTH_SHORT).show());
                           } else if (url.startsWith("data:")) {
                               webView.evaluateJavascript("javascript:AndroidDownloader.getBase64FromBlobData('" + url + "');", null);
-                              runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ডাউনলোড শুরু হচ্ছে...", Toast.LENGTH_SHORT).show());
+                              runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ржбрж╛ржЙржирж▓рзЛржб рж╢рзБрж░рзБ рж╣ржЪрзНржЫрзЗ...", Toast.LENGTH_SHORT).show());
                           } else {
                               String fileName = URLUtil.guessFileName(url, contentDisposition, mimetype);
                               
@@ -228,7 +234,7 @@ jobs:
                               
                               DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
                               dm.enqueue(request);
-                              runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ডাউনলোড শুরু হয়েছে...", Toast.LENGTH_LONG).show());
+                              runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ржбрж╛ржЙржирж▓рзЛржб рж╢рзБрж░рзБ рж╣ржпрж╝рзЗржЫрзЗ...", Toast.LENGTH_LONG).show());
                           }
                       }
                   });
@@ -245,13 +251,13 @@ jobs:
           
           sed -i "s/package PLACEHOLDER_PACKAGE;/package $PKG_NAME;/g" "$MAIN_ACTIVITY_PATH"
 
-      - name: 🚀 Compile APK (Gradle Build)
+      - name: ЁЯЪА Compile APK (Gradle Build)
         run: |
           cd myapp
           cordova build android
           cp platforms/android/app/build/outputs/apk/debug/app-debug.apk ../${{ github.event.client_payload.docId }}.apk
 
-      - name: ☁️ Upload APK to GitHub Releases
+      - name: тШБя╕П Upload APK to GitHub Releases
         id: upload_release
         uses: softprops/action-gh-release@v1
         env:
@@ -261,7 +267,7 @@ jobs:
           name: APK Build ${{ github.event.client_payload.docId }}
           files: ./${{ github.event.client_payload.docId }}.apk
 
-      - name: 🔄 Update Firebase Data
+      - name: ЁЯФД Update Firebase Data
         if: always()
         run: |
           DOC_ID="${{ github.event.client_payload.docId }}"
