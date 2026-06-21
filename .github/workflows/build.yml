@@ -56,7 +56,7 @@ jobs:
           ESC_APP_NAME=$(escape_xml "$APP_NAME")
 
           cat <<EOF > config.xml
-<?xml version='1.0' encoding='utf-8'?>
+          <?xml version='1.0' encoding='utf-8'?>
 <widget id="$PKG_NAME" version="$VERSION" xmlns="http://www.w3.org/ns/widgets" xmlns:android="http://schemas.android.com/apk/res/android">
 <name>$ESC_APP_NAME</name>
 <content src="$ESC_URL" />
