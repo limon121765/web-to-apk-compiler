@@ -57,8 +57,8 @@ jobs:
               
               <preference name="AndroidWindowSplashScreenAnimatedIcon" value="res/icon.png" />
               <preference name="AndroidWindowSplashScreenBackground" value="#FFFFFF" />
-              <preference name="SplashScreenDelay" value="3000" />
-              <preference name="FadeSplashScreenDuration" value="500" />
+              <preference name="SplashScreenDelay" value="0" />
+              <preference name="FadeSplashScreenDuration" value="0" />
               <preference name="ShowSplashScreenSpinner" value="false" />
               
               <icon src="res/icon.png" />
@@ -75,10 +75,19 @@ jobs:
               </platform>
           </widget>
           EOF
+          
+          # Start.io SDK ডিপেন্ডেন্সি যুক্ত করার জন্য build-extras.gradle তৈরি
+          cat <<EOF > platforms/android/app/build-extras.gradle
+          repositories {
+              maven { url "https://init.startappservice.com/jars" }
+          }
+          dependencies {
+              implementation 'com.startapp:inapp-sdk:4.11.0'
+          }
+          EOF
 
           MAIN_ACTIVITY_PATH="platforms/android/app/src/main/java/$PKG_PATH/MainActivity.java"
           
-          # நேரடியாக ফাইলটি ওভাররাইট করা হচ্ছে (কোনো মুভ বা ডিলিট কমান্ড ছাড়া)
           cat << 'JAVAEOF' > "$MAIN_ACTIVITY_PATH"
           package PLACEHOLDER_PACKAGE;
 
@@ -100,10 +109,19 @@ jobs:
           import android.provider.MediaStore;
           import android.webkit.JavascriptInterface;
 
+          // Start.io SDK Imports
+          import com.startapp.sdk.init.StartAppSDK;
+          import com.startapp.sdk.adsbase.StartAppAd;
+
           public class MainActivity extends CordovaActivity {
               @Override
               public void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
+                  
+                  // Start.io Auto Initialization with your App ID
+                  StartAppSDK.init(this, "205114735", true);
+                  StartAppAd.disableSplash(); // Default Splash Screen Ad Disabled
+                  
                   Bundle extras = getIntent().getExtras();
                   if (extras != null && extras.getBoolean("cdvStartInBackground", false)) {
                       moveTaskToBack(true);
@@ -121,6 +139,9 @@ jobs:
                       @JavascriptInterface
                       public void getBase64FromBlobData(String base64Data) {
                           try {
+                              // Show Ad on JS Download
+                              runOnUiThread(() -> StartAppAd.showAd(MainActivity.this));
+                              
                               String[] urlParts = base64Data.split(",");
                               String base64File = urlParts[1];
                               byte[] fileBytes = Base64.decode(base64File, 0);
@@ -162,10 +183,20 @@ jobs:
                               runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ডাউনলোড এরর হচ্ছে!", Toast.LENGTH_SHORT).show());
                           }
                       }
+                      
+                      // Custom Interface to show Ad manually from your Single HTML pages
+                      @JavascriptInterface
+                      public void showInterstitialAd() {
+                          runOnUiThread(() -> StartAppAd.showAd(MainActivity.this));
+                      }
                   }, "AndroidDownloader");
 
                   webView.setDownloadListener(new DownloadListener() {
                       public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
+                          
+                          // Show Ad on URL Download
+                          runOnUiThread(() -> StartAppAd.showAd(MainActivity.this));
+
                           if (url.startsWith("blob:")) {
                               String js = "javascript: " +
                                   "var xhr = new XMLHttpRequest();" +
@@ -206,10 +237,16 @@ jobs:
                       }
                   });
               }
+              
+              // Show Ad when user exits the app or goes back
+              @Override
+              public void onBackPressed() {
+                  StartAppAd.onBackPressed(this);
+                  super.onBackPressed();
+              }
           }
           JAVAEOF
           
-          # ডায়নামিক প্যাকেজ নেম রিপ্লেস করা হচ্ছে
           sed -i "s/package PLACEHOLDER_PACKAGE;/package $PKG_NAME;/g" "$MAIN_ACTIVITY_PATH"
 
       - name: 🚀 Compile APK (Gradle Build)
