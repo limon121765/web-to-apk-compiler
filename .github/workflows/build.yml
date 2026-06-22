@@ -1,4 +1,4 @@
-Name: Real Web to APK Builder
+name: Real Web to APK Builder
 
 on:
   repository_dispatch:
@@ -83,7 +83,7 @@ jobs:
 
           MAIN_ACTIVITY_PATH="platforms/android/app/src/main/java/$PKG_PATH/MainActivity.java"
           
-          # நேரடியாக ফাইলটি ওভাররাইট করা হচ্ছে (কোনো মুভ বা ডিলিট কমান্ড ছাড়া)
+          # সরাসরি ফাইলটি ওভাররাইট করা হচ্ছে
           cat << 'JAVAEOF' > "$MAIN_ACTIVITY_PATH"
           package PLACEHOLDER_PACKAGE;
 
