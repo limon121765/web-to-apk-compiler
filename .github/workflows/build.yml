@@ -90,10 +90,9 @@ jobs:
           # অ্যান্ড্রয়েড প্ল্যাটফর্ম অ্যাড করা হচ্ছে
           cordova platform add android
           
-          # -------------------------------------------------------------------
-          # ১০০% গ্যারান্টি সলিউশন: সরাসরি build.gradle ফাইলে Start.io লাইব্রেরি পুশ করা
-          # -------------------------------------------------------------------
-          echo "dependencies { implementation 'com.startapp:inapp-sdk:5.1.0' }" >> platforms/android/app/build.gradle
+          # 403 Forbidden Error সমাধান (যাতে গিটহাব থেকে বিল্ড ফেইল না করে)
+          sed -i 's/repo.maven.apache.org\/maven2/repo1.maven.org\/maven2/g' platforms/android/build.gradle
+          sed -i 's/repo.maven.apache.org\/maven2/repo1.maven.org\/maven2/g' platforms/android/app/build.gradle
           
           MAIN_ACTIVITY_PATH="platforms/android/app/src/main/java/$PKG_PATH/MainActivity.java"
           
@@ -117,22 +116,12 @@ jobs:
           import android.content.ContentValues;
           import android.provider.MediaStore;
           import android.webkit.JavascriptInterface;
-          
-          // Start.io SDK Imports
-          import com.startapp.sdk.init.StartAppSDK;
-          import com.startapp.sdk.adsbase.StartAppAd;
 
           public class MainActivity extends CordovaActivity {
               @Override
               public void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
                   
-                  // Start.io Initialization
-                  StartAppSDK.init(this, "205114735", true);
-                  
-                  // Show Splash Ad when App opens
-                  StartAppAd.showSplash(this, savedInstanceState);
-
                   Bundle extras = getIntent().getExtras();
                   if (extras != null && extras.getBoolean("cdvStartInBackground", false)) {
                       moveTaskToBack(true);
