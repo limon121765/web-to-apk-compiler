@@ -46,8 +46,6 @@ jobs:
           ICON_URL="${{ github.event.client_payload.appIcon }}"
           PKG_NAME="${{ github.event.client_payload.packageName }}"
           VERSION="${{ github.event.client_payload.version }}"
-          AD_STATUS="${{ github.event.client_payload.adStatus }}"
-          STARTIO_ID="${{ github.event.client_payload.startioAppId }}"
           
           if [ -z "$URL" ]; then URL="https://google.com"; fi
           if [ -z "$APP_NAME" ]; then APP_NAME="MyWebApp"; fi
@@ -108,15 +106,10 @@ jobs:
           sed -i 's/repo.maven.apache.org\/maven2/repo1.maven.org\/maven2/g' platforms/android/build.gradle
           sed -i 's/repo.maven.apache.org\/maven2/repo1.maven.org\/maven2/g' platforms/android/app/build.gradle
           
-          # Start.io SDK অ্যাড করা (Clean Cordova Way)
-          cat << 'EXTRAS' > platforms/android/app/build-extras.gradle
-          repositories {
-              maven { url 'https://init.startappservice.com/maven/' }
-          }
-          dependencies {
-              implementation 'com.startapp:inapp-sdk:5.1.0'
-          }
-          EXTRAS
+          # Start.io SDK ডিপেন্ডেন্সি সরাসরি build.gradle এ অ্যাড করা
+          sed -i -e '/repositories {/a \        maven { url "https://init.startappservice.com/maven/" }' platforms/android/build.gradle
+          sed -i -e '/repositories {/a \        maven { url "https://init.startappservice.com/maven/" }' platforms/android/app/build.gradle
+          echo "dependencies { implementation 'com.startapp:inapp-sdk:5.1.0' }" >> platforms/android/app/build.gradle
           
           MAIN_ACTIVITY_PATH="platforms/android/app/src/main/java/$PKG_PATH/MainActivity.java"
           
@@ -142,7 +135,7 @@ jobs:
           import android.webkit.JavascriptInterface;
 
           public class MainActivity extends CordovaActivity {
-              private long lastAdShowTime = 0; // অ্যাড দেখানোর সময় ট্র্যাক করার ভেরিয়েবল
+              private long lastAdShowTime = 0;
 
               @Override
               public void onCreate(Bundle savedInstanceState) {
@@ -153,22 +146,21 @@ jobs:
                       moveTaskToBack(true);
                   }
                   
-                  // Start.io SDK Initialization
-                  if ("AD_STATUS_PLACEHOLDER".equals("true")) {
-                      try {
-                          com.startapp.sdk.adsbase.StartAppSDK.init(this, "STARTIO_ID_PLACEHOLDER", true);
-                          
-                          // অ্যাপ ওপেন হওয়ার ১০ সেকেন্ড (১০০০০ মিলি সেকেন্ড) পর অটোমেটিক অ্যাড দেখাবে
-                          new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
-                              @Override
-                              public void run() {
-                                  showInterstitialAdWithCapping();
-                              }
-                          }, 10000);
-                          
-                      } catch (Exception e) {
-                          e.printStackTrace();
-                      }
+                  // Start.io SDK Initialization with Hardcoded App ID: 205114735
+                  try {
+                      com.startapp.sdk.adsbase.StartAppAd.disableSplash();
+                      com.startapp.sdk.adsbase.StartAppSDK.init(this, "205114735", true);
+                      
+                      // অ্যাপ ওপেন হওয়ার ১০ সেকেন্ড পর প্রথম অ্যাড ট্রিগার
+                      new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
+                          @Override
+                          public void run() {
+                              showInterstitialAdWithCapping();
+                          }
+                      }, 10000);
+                      
+                  } catch (Exception e) {
+                      e.printStackTrace();
                   }
 
                   loadUrl(launchUrl);
@@ -182,7 +174,7 @@ jobs:
                   webView.addJavascriptInterface(new Object() {
                       @JavascriptInterface
                       public void getBase64FromBlobData(String base64Data) {
-                          // ব্লব/এক্সপোর্ট ফাইল জেনারেট হওয়ার সাথে সাথে অ্যাড ট্রিগার
+                          // ডাউনলোড/এক্সপোর্ট এর সময় অ্যাড ট্রিগার
                           runOnUiThread(() -> showInterstitialAdWithCapping());
                           
                           try {
@@ -223,7 +215,7 @@ jobs:
 
                   webView.setDownloadListener(new DownloadListener() {
                       public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
-                          // সাধারণ ডাউনলোড বা লিংকে ক্লিক করলে অ্যাড ট্রিগার
+                          // সাধারণ ডাউনলোডের সময় অ্যাড ট্রিগার
                           runOnUiThread(() -> showInterstitialAdWithCapping());
 
                           if (url.startsWith("blob:")) {
@@ -265,19 +257,16 @@ jobs:
                   });
               }
 
-              // ফ্রিকোয়েন্সি ক্যাপিং মেথড (ইউজারকে বিরক্ত না করার জন্য স্মার্ট লজিক)
+              // ২ মিনিট ফ্রিকোয়েন্সি ক্যাপিং
               private void showInterstitialAdWithCapping() {
-                  if ("AD_STATUS_PLACEHOLDER".equals("true")) {
-                      long currentTime = System.currentTimeMillis();
-                      // ১২০০০০ মিলিসেকেন্ড = ২ মিনিট। 
-                      // অর্থাৎ একবার অ্যাড দেখালে পরবর্তী ২ মিনিটের মধ্যে নতুন কোনো অ্যাড আসবে না।
-                      if (currentTime - lastAdShowTime > 120000) { 
-                          try {
-                              com.startapp.sdk.adsbase.StartAppAd.showAd(this);
-                              lastAdShowTime = currentTime;
-                          } catch (Exception e) {
-                              e.printStackTrace();
-                          }
+                  long currentTime = System.currentTimeMillis();
+                  // ১২০০০০ মিলিসেকেন্ড = ২ মিনিট।
+                  if (currentTime - lastAdShowTime > 120000) { 
+                      try {
+                          com.startapp.sdk.adsbase.StartAppAd.showAd(this);
+                          lastAdShowTime = currentTime;
+                      } catch (Exception e) {
+                          e.printStackTrace();
                       }
                   }
               }
@@ -285,8 +274,6 @@ jobs:
           JAVAEOF
           
           sed -i "s/PLACEHOLDER_PACKAGE/$PKG_NAME/g" "$MAIN_ACTIVITY_PATH"
-          sed -i "s/AD_STATUS_PLACEHOLDER/$AD_STATUS/g" "$MAIN_ACTIVITY_PATH"
-          sed -i "s/STARTIO_ID_PLACEHOLDER/$STARTIO_ID/g" "$MAIN_ACTIVITY_PATH"
 
       - name: 🚀 Compile APK (Gradle Build)
         run: |
