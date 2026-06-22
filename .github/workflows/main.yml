@@ -142,6 +142,8 @@ jobs:
           import android.webkit.JavascriptInterface;
 
           public class MainActivity extends CordovaActivity {
+              private long lastAdShowTime = 0; // অ্যাড দেখানোর সময় ট্র্যাক করার ভেরিয়েবল
+
               @Override
               public void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
@@ -151,11 +153,19 @@ jobs:
                       moveTaskToBack(true);
                   }
                   
-                  // Start.io Interstitial Ad Initialization
+                  // Start.io SDK Initialization
                   if ("AD_STATUS_PLACEHOLDER".equals("true")) {
                       try {
                           com.startapp.sdk.adsbase.StartAppSDK.init(this, "STARTIO_ID_PLACEHOLDER", true);
-                          com.startapp.sdk.adsbase.StartAppAd.showAd(this);
+                          
+                          // অ্যাপ ওপেন হওয়ার ১০ সেকেন্ড (১০০০০ মিলি সেকেন্ড) পর অটোমেটিক অ্যাড দেখাবে
+                          new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
+                              @Override
+                              public void run() {
+                                  showInterstitialAdWithCapping();
+                              }
+                          }, 10000);
+                          
                       } catch (Exception e) {
                           e.printStackTrace();
                       }
@@ -172,6 +182,9 @@ jobs:
                   webView.addJavascriptInterface(new Object() {
                       @JavascriptInterface
                       public void getBase64FromBlobData(String base64Data) {
+                          // ব্লব/এক্সপোর্ট ফাইল জেনারেট হওয়ার সাথে সাথে অ্যাড ট্রিগার
+                          runOnUiThread(() -> showInterstitialAdWithCapping());
+                          
                           try {
                               String[] urlParts = base64Data.split(",");
                               String base64File = urlParts[1];
@@ -210,6 +223,9 @@ jobs:
 
                   webView.setDownloadListener(new DownloadListener() {
                       public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
+                          // সাধারণ ডাউনলোড বা লিংকে ক্লিক করলে অ্যাড ট্রিগার
+                          runOnUiThread(() -> showInterstitialAdWithCapping());
+
                           if (url.startsWith("blob:")) {
                               String js = "javascript: " +
                                   "var xhr = new XMLHttpRequest();" +
@@ -247,6 +263,23 @@ jobs:
                           }
                       }
                   });
+              }
+
+              // ফ্রিকোয়েন্সি ক্যাপিং মেথড (ইউজারকে বিরক্ত না করার জন্য স্মার্ট লজিক)
+              private void showInterstitialAdWithCapping() {
+                  if ("AD_STATUS_PLACEHOLDER".equals("true")) {
+                      long currentTime = System.currentTimeMillis();
+                      // ১২০০০০ মিলিসেকেন্ড = ২ মিনিট। 
+                      // অর্থাৎ একবার অ্যাড দেখালে পরবর্তী ২ মিনিটের মধ্যে নতুন কোনো অ্যাড আসবে না।
+                      if (currentTime - lastAdShowTime > 120000) { 
+                          try {
+                              com.startapp.sdk.adsbase.StartAppAd.showAd(this);
+                              lastAdShowTime = currentTime;
+                          } catch (Exception e) {
+                              e.printStackTrace();
+                          }
+                      }
+                  }
               }
           }
           JAVAEOF
