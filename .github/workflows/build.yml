@@ -56,7 +56,7 @@ jobs:
           mkdir -p res
           curl -sL "$ICON_URL" -o res/icon.png || true
           
-          # config.xml ফাইল তৈরি করা হচ্ছে
+          # config.xml ফাইল তৈরি
           cat <<EOF > config.xml
           <?xml version='1.0' encoding='utf-8'?>
           <widget id="$PKG_NAME" version="$VERSION" xmlns="http://www.w3.org/ns/widgets" xmlns:android="http://schemas.android.com/apk/res/android">
@@ -73,8 +73,6 @@ jobs:
               <icon src="res/icon.png" />
               
               <platform name="android">
-                  <framework src="com.startapp:inapp-sdk:5.1.0" />
-                  
                   <config-file target="AndroidManifest.xml" parent="/*">
                       <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
                       <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
@@ -89,8 +87,13 @@ jobs:
           </widget>
           EOF
 
-          # config.xml তৈরি হওয়ার পর অ্যান্ড্রয়েড প্ল্যাটফর্ম অ্যাড করা হচ্ছে (যাতে SDK ঠিকমতো ইন্সটল হয়)
+          # অ্যান্ড্রয়েড প্ল্যাটফর্ম অ্যাড করা হচ্ছে
           cordova platform add android
+          
+          # -------------------------------------------------------------------
+          # ১০০% গ্যারান্টি সলিউশন: সরাসরি build.gradle ফাইলে Start.io লাইব্রেরি পুশ করা
+          # -------------------------------------------------------------------
+          echo "dependencies { implementation 'com.startapp:inapp-sdk:5.1.0' }" >> platforms/android/app/build.gradle
           
           MAIN_ACTIVITY_PATH="platforms/android/app/src/main/java/$PKG_PATH/MainActivity.java"
           
