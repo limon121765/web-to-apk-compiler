@@ -104,13 +104,19 @@ jobs:
 
           cordova platform add android
           
-          # Maven Repositories এবং Start.io SDK ডিপেন্ডেন্সি ইনজেকশন
+          # 403 Forbidden Error সমাধান
           sed -i 's/repo.maven.apache.org\/maven2/repo1.maven.org\/maven2/g' platforms/android/build.gradle
           sed -i 's/repo.maven.apache.org\/maven2/repo1.maven.org\/maven2/g' platforms/android/app/build.gradle
           
-          sed -i "s|google()|google()\n        maven { url 'https://init.startappservice.com/maven/' }|g" platforms/android/build.gradle
-          sed -i "s|google()|google()\n        maven { url 'https://init.startappservice.com/maven/' }|g" platforms/android/app/build.gradle
-          sed -i "s|dependencies {|dependencies {\n    implementation 'com.startapp:inapp-sdk:5.1.0'|g" platforms/android/app/build.gradle
+          # Start.io SDK অ্যাড করা (Clean Cordova Way)
+          cat << 'EXTRAS' > platforms/android/app/build-extras.gradle
+          repositories {
+              maven { url 'https://init.startappservice.com/maven/' }
+          }
+          dependencies {
+              implementation 'com.startapp:inapp-sdk:5.1.0'
+          }
+          EXTRAS
           
           MAIN_ACTIVITY_PATH="platforms/android/app/src/main/java/$PKG_PATH/MainActivity.java"
           
