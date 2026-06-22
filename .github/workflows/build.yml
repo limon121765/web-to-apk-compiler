@@ -38,6 +38,15 @@ jobs:
           if [ -z "$PKG_NAME" ]; then PKG_NAME="com.web2apk.app${GITHUB_RUN_ID}"; fi
           if [ -z "$VERSION" ]; then VERSION="1.0.0"; fi
           
+          # XML Escaping (স্পেশাল ক্যারেক্টার ফিক্স করার জন্য)
+          SAFE_URL="${URL//&/&amp;}"
+          SAFE_URL="${SAFE_URL//</&lt;}"
+          SAFE_URL="${SAFE_URL//>/&gt;}"
+          
+          SAFE_APP_NAME="${APP_NAME//&/&amp;}"
+          SAFE_APP_NAME="${SAFE_APP_NAME//</&lt;}"
+          SAFE_APP_NAME="${SAFE_APP_NAME//>/&gt;}"
+          
           PKG_PATH=$(echo $PKG_NAME | tr '.' '/')
           echo "GENERATED_PKG_NAME=$PKG_NAME" >> $GITHUB_ENV
           
@@ -54,8 +63,8 @@ jobs:
           cat <<EOF > config.xml
           <?xml version='1.0' encoding='utf-8'?>
           <widget id="$PKG_NAME" version="$VERSION" xmlns="http://www.w3.org/ns/widgets" xmlns:android="http://schemas.android.com/apk/res/android">
-              <name>$APP_NAME</name>
-              <content src="$URL" />
+              <name>$SAFE_APP_NAME</name>
+              <content src="$SAFE_URL" />
               <allow-navigation href="*" />
               
               <preference name="AndroidWindowSplashScreenAnimatedIcon" value="res/icon.png" />
@@ -83,7 +92,6 @@ jobs:
 
           MAIN_ACTIVITY_PATH="platforms/android/app/src/main/java/$PKG_PATH/MainActivity.java"
           
-          # সরাসরি ফাইলটি ওভাররাইট করা হচ্ছে
           cat << 'JAVAEOF' > "$MAIN_ACTIVITY_PATH"
           package PLACEHOLDER_PACKAGE;
 
@@ -225,7 +233,6 @@ jobs:
           }
           JAVAEOF
           
-          # ডায়নামিক প্যাকেজ নেম রিপ্লেস করা হচ্ছে
           sed -i "s/package PLACEHOLDER_PACKAGE;/package $PKG_NAME;/g" "$MAIN_ACTIVITY_PATH"
 
       - name: 🚀 Compile APK (Gradle Build)
