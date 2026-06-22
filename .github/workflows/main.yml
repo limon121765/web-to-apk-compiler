@@ -1,4 +1,4 @@
-Name: Real Web to APK Builder
+name: Real Web to APK Builder
 
 on:
   repository_dispatch:
