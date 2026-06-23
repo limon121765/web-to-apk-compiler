@@ -17,7 +17,7 @@ jobs:
           PROJECT_ID="my-app-ae88f"
           # সিকিউরিটির জন্য API_KEY টি GitHub Secrets এ ব্যবহার করার পরামর্শ দেওয়া হলো
           API_KEY="${{ secrets.FIREBASE_API_KEY }}"
-          if [ -z "$API_KEY" ]; then API_KEY="AIzaSyAo9ddKYbaCiIz5iwCNJN0pxs3UQvBvrTI"; fi
+          if [ -z "$API_KEY" ]; then API_KEY="AIzaSyCezhslkNJvIwSjsfoj3o-Z4UngRL9F0u0"; fi
           
           curl -X PATCH "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/apk_builds/$DOC_ID?key=$API_KEY&updateMask.fieldPaths=runId" \
           -H "Content-Type: application/json" \
