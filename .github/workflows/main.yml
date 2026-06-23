@@ -15,7 +15,9 @@ jobs:
         run: |
           DOC_ID="${{ github.event.client_payload.docId }}"
           PROJECT_ID="my-app-ae88f"
-          API_KEY="AIzaSyAo9ddKYbaCiIz5iwCNJN0pxs3UQvBvrTI"
+          # সিকিউরিটির জন্য API_KEY টি GitHub Secrets এ ব্যবহার করার পরামর্শ দেওয়া হলো
+          API_KEY="${{ secrets.FIREBASE_API_KEY }}"
+          if [ -z "$API_KEY" ]; then API_KEY="AIzaSyAo9ddKYbaCiIz5iwCNJN0pxs3UQvBvrTI"; fi
           
           curl -X PATCH "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/apk_builds/$DOC_ID?key=$API_KEY&updateMask.fieldPaths=runId" \
           -H "Content-Type: application/json" \
@@ -48,10 +50,13 @@ jobs:
           ICON_URL="${{ github.event.client_payload.appIcon }}"
           PKG_NAME="${{ github.event.client_payload.packageName }}"
           VERSION="${{ github.event.client_payload.version }}"
+          AD_STATUS="${{ github.event.client_payload.adStatus }}"
+          STARTIO_APP_ID="${{ github.event.client_payload.startioAppId }}"
           
           if [ -z "$APP_NAME" ]; then APP_NAME="MyWebApp"; fi
           if [ -z "$PKG_NAME" ]; then PKG_NAME="com.web2apk.app${GITHUB_RUN_ID}.apk"; fi
           if [ -z "$VERSION" ]; then VERSION="1.0.0"; fi
+          if [ -z "$AD_STATUS" ]; then AD_STATUS="false"; fi
           
           SAFE_APP_NAME="${APP_NAME//&/&amp;}"
           SAFE_APP_NAME="${SAFE_APP_NAME//</&lt;}"
@@ -71,7 +76,6 @@ jobs:
           if [ "$BUILD_TYPE" = "raw" ]; then
               echo "Processing Raw Editor Code..."
               mkdir -p www
-              # Decode base64 to index.html
               echo "$RAW_CODE" | base64 --decode > www/index.html
               CONTENT_SRC="index.html"
           else
@@ -119,14 +123,20 @@ jobs:
           sed -i 's/repo.maven.apache.org\/maven2/repo1.maven.org\/maven2/g' platforms/android/build.gradle
           sed -i 's/repo.maven.apache.org\/maven2/repo1.maven.org\/maven2/g' platforms/android/app/build.gradle
           
-          # Start.io SDK ডিপেন্ডেন্সি
-          sed -i -e '/repositories {/a \        maven { url "https://init.startappservice.com/maven/" }' platforms/android/build.gradle
-          sed -i -e '/repositories {/a \        maven { url "https://init.startappservice.com/maven/" }' platforms/android/app/build.gradle
-          echo "dependencies { implementation 'com.startapp:inapp-sdk:5.1.0' }" >> platforms/android/app/build.gradle
+          # ⚡ কন্ডিশনাল অ্যাড নেটওয়ার্ক ইনজেকশন (Ad Status True হলেই কেবল SDK যুক্ত হবে)
+          if [ "$AD_STATUS" = "true" ] && [ -n "$STARTIO_APP_ID" ]; then
+              echo "Injecting Start.io SDK Dependencies..."
+              sed -i -e '/repositories {/a \        maven { url "https://init.startappservice.com/maven/" }' platforms/android/build.gradle
+              sed -i -e '/repositories {/a \        maven { url "https://init.startappservice.com/maven/" }' platforms/android/app/build.gradle
+              echo "dependencies { implementation 'com.startapp:inapp-sdk:5.1.0' }" >> platforms/android/app/build.gradle
+          fi
           
           MAIN_ACTIVITY_PATH="platforms/android/app/src/main/java/$PKG_PATH/MainActivity.java"
           
-          cat << 'JAVAEOF' > "$MAIN_ACTIVITY_PATH"
+          # 🛠️ ডায়নামিক MainActivity.java জেনারেশন (অ্যাড অন/অফ এর ওপর ভিত্তি করে)
+          if [ "$AD_STATUS" = "true" ] && [ -n "$STARTIO_APP_ID" ]; then
+              echo "Generating MainActivity with Start.io Ads Integration..."
+              cat << 'JAVAEOF' > "$MAIN_ACTIVITY_PATH"
           package PLACEHOLDER_PACKAGE;
 
           import android.os.Bundle;
@@ -164,11 +174,9 @@ jobs:
                   }
                   
                   try {
-                      // 🟢 টেস্ট মোড চালু করা হলো (টেস্ট শেষ হলে false করে দিবেন)
-                      StartAppSDK.setTestAdsEnabled(true); 
-                      
+                      StartAppSDK.setTestAdsEnabled(false); // লাইভ অ্যাড এর জন্য false করা হলো
                       StartAppAd.disableSplash();
-                      StartAppSDK.init(this, "205114735", false);
+                      StartAppSDK.init(this, "PLACEHOLDER_STARTIO_ID", false);
                       
                       startAppAd = new StartAppAd(this);
                       startAppAd.loadAd();
@@ -185,7 +193,10 @@ jobs:
                   }
 
                   loadUrl(launchUrl);
+                  setupWebViewSettings();
+              }
 
+              private void setupWebViewSettings() {
                   SystemWebView webView = (SystemWebView) appView.getView();
                   WebSettings settings = webView.getSettings();
                   settings.setDomStorageEnabled(true);
@@ -196,63 +207,54 @@ jobs:
                       @JavascriptInterface
                       public void getBase64FromBlobData(String base64Data) {
                           runOnUiThread(() -> showInterstitialAdWithCapping());
-                          
-                          try {
-                              String[] urlParts = base64Data.split(",");
-                              String base64File = urlParts[1];
-                              byte[] fileBytes = Base64.decode(base64File, 0);
-                              
-                              String mimeType = "application/octet-stream";
-                              String extension = ".bin";
-                              
-                              try {
-                                  if(urlParts[0].contains(":")) {
-                                      mimeType = urlParts[0].substring(urlParts[0].indexOf(":") + 1, urlParts[0].indexOf(";"));
-                                      String ext = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType);
-                                      if(ext != null) extension = "." + ext;
-                                  }
-                              } catch(Exception e) {}
-                              
-                              String fileName = "Download_" + System.currentTimeMillis() + extension;
-                              
-                              ContentValues values = new ContentValues();
-                              values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
-                              values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
-                              values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
-                              
-                              Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-                              if (uri != null) {
-                                  OutputStream out = getContentResolver().openOutputStream(uri);
-                                  out.write(fileBytes);
-                                  out.close();
-                                  runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ফাইল সেভ হয়েছে!", Toast.LENGTH_LONG).show());
-                              }
-                          } catch (Exception e) {
-                              runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ডাউনলোড এরর হচ্ছে!", Toast.LENGTH_SHORT).show());
-                          }
+                          processBase64Download(base64Data);
                       }
                   }, "AndroidDownloader");
 
+                  setupDownloadListener(webView);
+              }
+
+              private void processBase64Download(String base64Data) {
+                  try {
+                      String[] urlParts = base64Data.split(",");
+                      String base64File = urlParts[1];
+                      byte[] fileBytes = Base64.decode(base64File, 0);
+                      String mimeType = "application/octet-stream";
+                      String extension = ".bin";
+                      
+                      try {
+                          if(urlParts[0].contains(":")) {
+                              mimeType = urlParts[0].substring(urlParts[0].indexOf(":") + 1, urlParts[0].indexOf(";"));
+                              String ext = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType);
+                              if(ext != null) extension = "." + ext;
+                          }
+                      } catch(Exception e) {}
+                      
+                      String fileName = "Download_" + System.currentTimeMillis() + extension;
+                      ContentValues values = new ContentValues();
+                      values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+                      values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
+                      values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+                      
+                      Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+                      if (uri != null) {
+                          OutputStream out = getContentResolver().openOutputStream(uri);
+                          out.write(fileBytes);
+                          out.close();
+                          runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ফাইল সেভ হয়েছে!", Toast.LENGTH_LONG).show());
+                      }
+                  } catch (Exception e) {
+                      runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ডাউনলোড এরর হচ্ছে!", Toast.LENGTH_SHORT).show());
+                  }
+              }
+
+              private void setupDownloadListener(SystemWebView webView) {
                   webView.setDownloadListener(new DownloadListener() {
                       public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
                           runOnUiThread(() -> showInterstitialAdWithCapping());
 
                           if (url.startsWith("blob:")) {
-                              String js = "javascript: " +
-                                  "var xhr = new XMLHttpRequest();" +
-                                  "xhr.open('GET', '" + url + "', true);" +
-                                  "xhr.responseType = 'blob';" +
-                                  "xhr.onload = function(e) {" +
-                                  "    if (this.status == 200) {" +
-                                  "        var blob = this.response;" +
-                                  "        var reader = new FileReader();" +
-                                  "        reader.readAsDataURL(blob);" +
-                                  "        reader.onloadend = function() {" +
-                                  "            AndroidDownloader.getBase64FromBlobData(reader.result);" +
-                                  "        }" +
-                                  "    }" +
-                                  "};" +
-                                  "xhr.send();";
+                              String js = "javascript: var xhr = new XMLHttpRequest(); xhr.open('GET', '" + url + "', true); xhr.responseType = 'blob'; xhr.onload = function(e) { if (this.status == 200) { var reader = new FileReader(); reader.readAsDataURL(this.response); reader.onloadend = function() { AndroidDownloader.getBase64FromBlobData(reader.result); } } }; xhr.send();";
                               webView.evaluateJavascript(js, null);
                               runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ডাউনলোড শুরু হচ্ছে...", Toast.LENGTH_SHORT).show());
                           } else if (url.startsWith("data:")) {
@@ -262,14 +264,11 @@ jobs:
                               String fileName = URLUtil.guessFileName(url, contentDisposition, mimetype);
                               DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
                               request.setMimeType(mimetype);
-                              String cookies = CookieManager.getInstance().getCookie(url);
-                              request.addRequestHeader("cookie", cookies);
+                              request.addRequestHeader("cookie", CookieManager.getInstance().getCookie(url));
                               request.allowScanningByMediaScanner();
                               request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
                               request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
-                              
-                              DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-                              dm.enqueue(request);
+                              ((DownloadManager) getSystemService(DOWNLOAD_SERVICE)).enqueue(request);
                               runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ডাউনলোড শুরু হয়েছে...", Toast.LENGTH_LONG).show());
                           }
                       }
@@ -284,9 +283,8 @@ jobs:
                               startAppAd.showAd();
                               lastAdShowTime = currentTime;
                               startAppAd.loadAd();
-                          } else {
-                              Toast.makeText(getApplicationContext(), "Start.io: Ad is loading...", Toast.LENGTH_SHORT).show();
-                              if (startAppAd != null) startAppAd.loadAd();
+                          } else if (startAppAd != null) {
+                              startAppAd.loadAd();
                           }
                       } catch (Exception e) {
                           e.printStackTrace();
@@ -295,6 +293,120 @@ jobs:
               }
           }
           JAVAEOF
+              sed -i "s/PLACEHOLDER_STARTIO_ID/$STARTIO_APP_ID/g" "$MAIN_ACTIVITY_PATH"
+          else
+              echo "Generating Clean MainActivity (No Ads)..."
+              cat << 'JAVAEOF' > "$MAIN_ACTIVITY_PATH"
+          package PLACEHOLDER_PACKAGE;
+
+          import android.os.Bundle;
+          import org.apache.cordova.*;
+          import android.webkit.DownloadListener;
+          import android.app.DownloadManager;
+          import android.net.Uri;
+          import android.os.Environment;
+          import android.widget.Toast;
+          import android.webkit.CookieManager;
+          import android.webkit.WebSettings;
+          import android.webkit.URLUtil;
+          import android.webkit.MimeTypeMap;
+          import org.apache.cordova.engine.SystemWebView;
+          import android.util.Base64;
+          import java.io.OutputStream;
+          import android.content.ContentValues;
+          import android.provider.MediaStore;
+          import android.webkit.JavascriptInterface;
+
+          public class MainActivity extends CordovaActivity {
+              @Override
+              public void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  Bundle extras = getIntent().getExtras();
+                  if (extras != null && extras.getBoolean("cdvStartInBackground", false)) {
+                      moveTaskToBack(true);
+                  }
+                  loadUrl(launchUrl);
+                  setupWebViewSettings();
+              }
+
+              private void setupWebViewSettings() {
+                  SystemWebView webView = (SystemWebView) appView.getView();
+                  WebSettings settings = webView.getSettings();
+                  settings.setDomStorageEnabled(true);
+                  settings.setDatabaseEnabled(true);
+                  settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+
+                  webView.addJavascriptInterface(new Object() {
+                      @JavascriptInterface
+                      public void getBase64FromBlobData(String base64Data) {
+                          processBase64Download(base64Data);
+                      }
+                  }, "AndroidDownloader");
+
+                  setupDownloadListener(webView);
+              }
+
+              private void processBase64Download(String base64Data) {
+                  try {
+                      String[] urlParts = base64Data.split(",");
+                      String base64File = urlParts[1];
+                      byte[] fileBytes = Base64.decode(base64File, 0);
+                      String mimeType = "application/octet-stream";
+                      String extension = ".bin";
+                      
+                      try {
+                          if(urlParts[0].contains(":")) {
+                              mimeType = urlParts[0].substring(urlParts[0].indexOf(":") + 1, urlParts[0].indexOf(";"));
+                              String ext = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType);
+                              if(ext != null) extension = "." + ext;
+                          }
+                      } catch(Exception e) {}
+                      
+                      String fileName = "Download_" + System.currentTimeMillis() + extension;
+                      ContentValues values = new ContentValues();
+                      values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+                      values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
+                      values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+                      
+                      Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+                      if (uri != null) {
+                          OutputStream out = getContentResolver().openOutputStream(uri);
+                          out.write(fileBytes);
+                          out.close();
+                          runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ফাইল সেভ হয়েছে!", Toast.LENGTH_LONG).show());
+                      }
+                  } catch (Exception e) {
+                      runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ডাউনলোড এরর হচ্ছে!", Toast.LENGTH_SHORT).show());
+                  }
+              }
+
+              private void setupDownloadListener(SystemWebView webView) {
+                  webView.setDownloadListener(new DownloadListener() {
+                      public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
+                          if (url.startsWith("blob:")) {
+                              String js = "javascript: var xhr = new XMLHttpRequest(); xhr.open('GET', '" + url + "', true); xhr.responseType = 'blob'; xhr.onload = function(e) { if (this.status == 200) { var reader = new FileReader(); reader.readAsDataURL(this.response); reader.onloadend = function() { AndroidDownloader.getBase64FromBlobData(reader.result); } } }; xhr.send();";
+                              webView.evaluateJavascript(js, null);
+                              runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ডাউনলোড শুরু হচ্ছে...", Toast.LENGTH_SHORT).show());
+                          } else if (url.startsWith("data:")) {
+                              webView.evaluateJavascript("javascript:AndroidDownloader.getBase64FromBlobData('" + url + "');", null);
+                              runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ডাউনলোড শুরু হচ্ছে...", Toast.LENGTH_SHORT).show());
+                          } else {
+                              String fileName = URLUtil.guessFileName(url, contentDisposition, mimetype);
+                              DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+                              request.setMimeType(mimetype);
+                              request.addRequestHeader("cookie", CookieManager.getInstance().getCookie(url));
+                              request.allowScanningByMediaScanner();
+                              request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                              request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
+                              ((DownloadManager) getSystemService(DOWNLOAD_SERVICE)).enqueue(request);
+                              runOnUiThread(() -> Toast.makeText(getApplicationContext(), "ডাউনলোড শুরু হয়েছে...", Toast.LENGTH_LONG).show());
+                          }
+                      }
+                  });
+              }
+          }
+          JAVAEOF
+          fi
           
           sed -i "s/PLACEHOLDER_PACKAGE/$PKG_NAME/g" "$MAIN_ACTIVITY_PATH"
 
@@ -319,7 +431,8 @@ jobs:
         run: |
           DOC_ID="${{ github.event.client_payload.docId }}"
           PROJECT_ID="my-app-ae88f"
-          API_KEY="AIzaSyAo9ddKYbaCiIz5iwCNJN0pxs3UQvBvrTI"
+          API_KEY="${{ secrets.FIREBASE_API_KEY }}"
+          if [ -z "$API_KEY" ]; then API_KEY="AIzaSyAo9ddKYbaCiIz5iwCNJN0pxs3UQvBvrTI"; fi
           
           if [ "${{ job.status }}" = "success" ]; then
             STATUS="completed"
