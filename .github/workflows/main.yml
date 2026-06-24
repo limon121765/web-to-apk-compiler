@@ -43,9 +43,13 @@ jobs:
 
       - name: 🛠️ Create App Environment & Optimize Source
         run: |
+          DOC_ID="${{ github.event.client_payload.docId }}"
+          PROJECT_ID="my-app-ae88f"
+          API_KEY="${{ secrets.FIREBASE_API_KEY }}"
+          if [ -z "$API_KEY" ]; then API_KEY="AIzaSyAo9ddKYbaCiIz5iwCNJN0pxs3UQvBvrTI"; fi
+          
           BUILD_TYPE="${{ github.event.client_payload.buildType }}"
           URL="${{ github.event.client_payload.url }}"
-          RAW_CODE="${{ github.event.client_payload.rawCode }}"
           APP_NAME="${{ github.event.client_payload.appName }}"
           ICON_URL="${{ github.event.client_payload.appIcon }}"
           PKG_NAME="${{ github.event.client_payload.packageName }}"
@@ -72,11 +76,23 @@ jobs:
           mkdir -p res
           curl -sL "$ICON_URL" -o res/icon.png || true
 
-          # 🎯 Logic: URL vs Raw Code Editor
+          # 🎯 Logic: URL vs Raw Code Editor (Updated for Firebase Fetch)
           if [ "$BUILD_TYPE" = "raw" ]; then
-              echo "Processing Raw Editor Code..."
+              echo "Processing Raw Editor Code directly from Firebase..."
               mkdir -p www
-              echo "$RAW_CODE" | base64 --decode > www/index.html
+              
+              # Firebase থেকে সরাসরি ডাটা ফেচ করা হচ্ছে
+              FIREBASE_RESPONSE=$(curl -s "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/apk_builds/$DOC_ID?key=$API_KEY")
+              
+              # JSON রেসপন্স থেকে Base64 কোডটি এক্সট্রাক্ট করা হচ্ছে
+              FETCHED_RAW_CODE=$(echo "$FIREBASE_RESPONSE" | jq -r '.fields.rawCode.stringValue')
+              
+              if [ "$FETCHED_RAW_CODE" = "null" ] || [ -z "$FETCHED_RAW_CODE" ]; then
+                  echo "Error: Failed to fetch 'rawCode' from Firebase. Make sure it is saved before triggering the build."
+                  exit 1
+              fi
+              
+              echo "$FETCHED_RAW_CODE" | base64 --decode > www/index.html
               CONTENT_SRC="index.html"
           else
               echo "Processing Live URL..."
@@ -123,7 +139,7 @@ jobs:
           sed -i 's/repo.maven.apache.org\/maven2/repo1.maven.org\/maven2/g' platforms/android/build.gradle
           sed -i 's/repo.maven.apache.org\/maven2/repo1.maven.org\/maven2/g' platforms/android/app/build.gradle
           
-          # ⚡ কন্ডিশনাল অ্যাড নেটওয়ার্ক ইনজেকশন (Ad Status True হলেই কেবল SDK যুক্ত হবে)
+          # ⚡ কন্ডিশনাল অ্যাড নেটওয়ার্ক ইনজেকশন
           if [ "$AD_STATUS" = "true" ] && [ -n "$STARTIO_APP_ID" ]; then
               echo "Injecting Start.io SDK Dependencies..."
               sed -i -e '/repositories {/a \        maven { url "https://init.startappservice.com/maven/" }' platforms/android/build.gradle
@@ -133,7 +149,7 @@ jobs:
           
           MAIN_ACTIVITY_PATH="platforms/android/app/src/main/java/$PKG_PATH/MainActivity.java"
           
-          # 🛠️ ডায়নামিক MainActivity.java জেনারেশন (অ্যাড অন/অফ এর ওপর ভিত্তি করে)
+          # 🛠️ ডায়নামিক MainActivity.java জেনারেশন
           if [ "$AD_STATUS" = "true" ] && [ -n "$STARTIO_APP_ID" ]; then
               echo "Generating MainActivity with Start.io Ads Integration..."
               cat << 'JAVAEOF' > "$MAIN_ACTIVITY_PATH"
@@ -174,7 +190,7 @@ jobs:
                   }
                   
                   try {
-                      StartAppSDK.setTestAdsEnabled(false); // লাইভ অ্যাড এর জন্য false করা হলো
+                      StartAppSDK.setTestAdsEnabled(false);
                       StartAppAd.disableSplash();
                       StartAppSDK.init(this, "PLACEHOLDER_STARTIO_ID", false);
                       
